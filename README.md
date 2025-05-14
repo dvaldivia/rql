@@ -7,7 +7,7 @@ REST Query Language
 
 A library to introduce filters that can be passed by the client to the server via a query parameter using SQL-like WHERE statements. RQL provides two main functionalities:
 
- 
+1. Parse the SQL-like filter statement
 2. Apply the filter to arrays of generic structs using the same SQL-like filters
 
 ## Why?
