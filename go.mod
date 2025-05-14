@@ -1,11 +1,8 @@
 module github.com/dvaldivia/rql
 
-go 1.20
+go 1.24
 
-require (
-	github.com/auxten/postgresql-parser v1.0.1
-	github.com/doug-martin/goqu/v9 v9.18.0
-)
+require github.com/auxten/postgresql-parser v1.0.1
 
 require (
 	github.com/certifi/gocertifi v0.0.0-20200922220541-2c3bb06c6054 // indirect
