@@ -32,6 +32,10 @@ type TestPerson struct {
 	Age        int
 	Active     bool
 	Department *Department
+	Tags       []string   // Array field for ANY operator tests
+	Skills     []string   // Another array field
+	Scores     []int      // Array of integers
+	Metadata   *TestMetadata // Nested object with array
 }
 
 type Department struct {
@@ -39,14 +43,43 @@ type Department struct {
 	Location string
 }
 
+type TestMetadata struct {
+	Categories []string
+}
+
 func TestApplyFilter(t *testing.T) {
 	// Test data
 	people := []TestPerson{
-		{ID: 1, Name: "Alice", Email: "alice@example.com", Age: 25, Active: true, Department: &Department{Name: "Engineering", Location: "Building A"}},
-		{ID: 2, Name: "Bob", Email: "bob@example.com", Age: 30, Active: true, Department: &Department{Name: "Engineering", Location: "Building B"}},
-		{ID: 3, Name: "Charlie", Email: "charlie@example.com", Age: 35, Active: false, Department: &Department{Name: "Marketing", Location: "Building C"}},
-		{ID: 4, Name: "Dave", Email: "dave@alternative.com", Age: 40, Active: true, Department: &Department{Name: "Sales", Location: "Building D"}},
-		{ID: 5, Name: "Eve", Email: "eve@example.com", Age: 45, Active: false, Department: &Department{Name: "HR", Location: "Building E"}},
+		{ID: 1, Name: "Alice", Email: "alice@example.com", Age: 25, Active: true, 
+			Department: &Department{Name: "Engineering", Location: "Building A"}, 
+			Tags: []string{"frontend", "javascript", "react"}, 
+			Skills: []string{"coding", "design"}, 
+			Scores: []int{90, 85, 88},
+			Metadata: &TestMetadata{Categories: []string{"developer", "ui"}}},
+		{ID: 2, Name: "Bob", Email: "bob@example.com", Age: 30, Active: true, 
+			Department: &Department{Name: "Engineering", Location: "Building B"}, 
+			Tags: []string{"backend", "python", "go"}, 
+			Skills: []string{"coding", "architecture"}, 
+			Scores: []int{95, 92, 99},
+			Metadata: &TestMetadata{Categories: []string{"developer", "backend"}}},
+		{ID: 3, Name: "Charlie", Email: "charlie@example.com", Age: 35, Active: false, 
+			Department: &Department{Name: "Marketing", Location: "Building C"}, 
+			Tags: []string{"content", "strategy"}, 
+			Skills: []string{"writing", "analysis"}, 
+			Scores: []int{85, 80, 90},
+			Metadata: &TestMetadata{Categories: []string{"marketing", "content"}}},
+		{ID: 4, Name: "Dave", Email: "dave@alternative.com", Age: 40, Active: true, 
+			Department: &Department{Name: "Sales", Location: "Building D"}, 
+			Tags: []string{"enterprise", "relationships"}, 
+			Skills: []string{"negotiation", "presentation"}, 
+			Scores: []int{88, 92, 87},
+			Metadata: &TestMetadata{Categories: []string{"sales", "account-management"}}},
+		{ID: 5, Name: "Eve", Email: "eve@example.com", Age: 45, Active: false, 
+			Department: &Department{Name: "HR", Location: "Building E"}, 
+			Tags: []string{"recruiting", "training"}, 
+			Skills: []string{"interviewing", "policy"}, 
+			Scores: []int{91, 85, 89},
+			Metadata: &TestMetadata{Categories: []string{"hr", "people"}}},
 	}
 
 	tests := []struct {
@@ -210,6 +243,62 @@ func TestApplyFilter(t *testing.T) {
 			wantIDs:   []int{1, 2, 3, 4, 5},
 			wantErr:   false,
 		},
+		{
+			name:      "ANY operator with single value equal",
+			filter:    "ANY(Tags) = 'javascript'",
+			wantCount: 1,
+			wantIDs:   []int{1},
+			wantErr:   false,
+		},
+		{
+			name:      "ANY operator with single value not equal",
+			filter:    "ANY(Tags) != 'javascript'",
+			wantCount: 4,
+			wantIDs:   []int{2, 3, 4, 5},
+			wantErr:   false,
+		},
+		{
+			name:      "ANY operator with multiple values",
+			filter:    "ANY(Tags) = ANY('python', 'content')",
+			wantCount: 2,
+			wantIDs:   []int{2, 3},
+			wantErr:   false,
+		},
+		{
+			name:      "ANY operator with multiple values not equal",
+			filter:    "ANY(Tags) != ANY('python', 'content')",
+			wantCount: 3,
+			wantIDs:   []int{1, 4, 5},
+			wantErr:   false,
+		},
+		{
+			name:      "ANY operator with integer array",
+			filter:    "ANY(Scores) = '90'",
+			wantCount: 2,
+			wantIDs:   []int{1, 3},
+			wantErr:   false,
+		},
+		{
+			name:      "ANY operator with nested field",
+			filter:    "ANY(Metadata.Categories) = 'developer'",
+			wantCount: 2,
+			wantIDs:   []int{1, 2},
+			wantErr:   false,
+		},
+		{
+			name:      "ANY operator with nested field and multiple values",
+			filter:    "ANY(Metadata.Categories) = ANY('marketing', 'hr')",
+			wantCount: 2,
+			wantIDs:   []int{3, 5},
+			wantErr:   false,
+		},
+		{
+			name:      "Complex filter with ANY and other conditions",
+			filter:    "ANY(Skills) = 'coding' AND Active = true",
+			wantCount: 2,
+			wantIDs:   []int{1, 2},
+			wantErr:   false,
+		},
 	}
 
 	for _, tt := range tests {
@@ -255,67 +344,67 @@ func TestPaginationOptions(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		filter        string
-		options       FilterOptions
-		wantCount     int     // Expected number of items after pagination
-		wantTotalCount int     // Expected total count before pagination
-		wantIDs       []int
-		wantErr       bool
+		name           string
+		filter         string
+		options        FilterOptions
+		wantCount      int // Expected number of items after pagination
+		wantTotalCount int // Expected total count before pagination
+		wantIDs        []int
+		wantErr        bool
 	}{
 		{
-			name:          "limit only",
-			filter:        "", // No filter, just limit
-			options:       FilterOptions{Limit: 3, Offset: 0},
-			wantCount:     3,
+			name:           "limit only",
+			filter:         "", // No filter, just limit
+			options:        FilterOptions{Limit: 3, Offset: 0},
+			wantCount:      3,
 			wantTotalCount: 5, // All 5 people match (no filter), but only 3 returned due to limit
-			wantIDs:       []int{1, 2, 3},
-			wantErr:       false,
+			wantIDs:        []int{1, 2, 3},
+			wantErr:        false,
 		},
 		{
-			name:          "offset only",
-			filter:        "", // No filter, just offset
-			options:       FilterOptions{Limit: 0, Offset: 2},
-			wantCount:     3,
+			name:           "offset only",
+			filter:         "", // No filter, just offset
+			options:        FilterOptions{Limit: 0, Offset: 2},
+			wantCount:      3,
 			wantTotalCount: 5, // All 5 people match (no filter), but only 3 returned due to offset
-			wantIDs:       []int{3, 4, 5},
-			wantErr:       false,
+			wantIDs:        []int{3, 4, 5},
+			wantErr:        false,
 		},
 		{
-			name:          "limit and offset combined",
-			filter:        "", // No filter, both limit and offset
-			options:       FilterOptions{Limit: 2, Offset: 1},
-			wantCount:     2,
+			name:           "limit and offset combined",
+			filter:         "", // No filter, both limit and offset
+			options:        FilterOptions{Limit: 2, Offset: 1},
+			wantCount:      2,
 			wantTotalCount: 5, // All 5 people match (no filter), but only 2 returned due to limit+offset
-			wantIDs:       []int{2, 3},
-			wantErr:       false,
+			wantIDs:        []int{2, 3},
+			wantErr:        false,
 		},
 		{
-			name:          "filter with pagination",
-			filter:        "Age >= 30",
-			options:       FilterOptions{Limit: 2, Offset: 1},
-			wantCount:     2,
-			wantTotalCount: 4, // 4 people match the filter (Age >= 30), but only 2 returned due to limit+offset
-			wantIDs:       []int{3, 4},  // Ages 30, 35, 40, 45 sorted by ID, offset 1, limit 2 gives IDs 3, 4
-			wantErr:       false,
+			name:           "filter with pagination",
+			filter:         "Age >= 30",
+			options:        FilterOptions{Limit: 2, Offset: 1},
+			wantCount:      2,
+			wantTotalCount: 4,           // 4 people match the filter (Age >= 30), but only 2 returned due to limit+offset
+			wantIDs:        []int{3, 4}, // Ages 30, 35, 40, 45 sorted by ID, offset 1, limit 2 gives IDs 3, 4
+			wantErr:        false,
 		},
 		{
-			name:          "pagination beyond available items",
-			filter:        "",
-			options:       FilterOptions{Limit: 10, Offset: 5},
-			wantCount:     0,
+			name:           "pagination beyond available items",
+			filter:         "",
+			options:        FilterOptions{Limit: 10, Offset: 5},
+			wantCount:      0,
 			wantTotalCount: 5, // All 5 people match (no filter), but none returned due to offset beyond available
-			wantIDs:       []int{},
-			wantErr:       false,
+			wantIDs:        []int{},
+			wantErr:        false,
 		},
 		{
-			name:          "zero limit returns all items after offset",
-			filter:        "",
-			options:       FilterOptions{Limit: 0, Offset: 3},
-			wantCount:     2,
+			name:           "zero limit returns all items after offset",
+			filter:         "",
+			options:        FilterOptions{Limit: 0, Offset: 3},
+			wantCount:      2,
 			wantTotalCount: 5, // All 5 people match (no filter), but only 2 returned due to offset
-			wantIDs:       []int{4, 5},
-			wantErr:       false,
+			wantIDs:        []int{4, 5},
+			wantErr:        false,
 		},
 	}
 
@@ -367,46 +456,46 @@ func TestCountResults(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		filter        string
-		options       FilterOptions
-		wantCount     int   // Expected number of items returned (after pagination)
-		wantTotalCount int   // Expected total number of matches (before pagination)
+		name           string
+		filter         string
+		options        FilterOptions
+		wantCount      int // Expected number of items returned (after pagination)
+		wantTotalCount int // Expected total number of matches (before pagination)
 	}{
 		{
-			name:          "no pagination - count equals items",
-			filter:        "Age > 40",
-			options:       FilterOptions{}, // Default options (no limit, no offset)
-			wantCount:     6,              // People with Age > 40: IDs 5-10
-			wantTotalCount: 6,             // Total matches should equal returned items
+			name:           "no pagination - count equals items",
+			filter:         "Age > 40",
+			options:        FilterOptions{}, // Default options (no limit, no offset)
+			wantCount:      6,               // People with Age > 40: IDs 5-10
+			wantTotalCount: 6,               // Total matches should equal returned items
 		},
 		{
-			name:          "with limit - count greater than items",
-			filter:        "Age > 40",
-			options:       FilterOptions{Limit: 3}, // Only return first 3
-			wantCount:     3,                      // Only 3 items returned due to limit
-			wantTotalCount: 6,                     // But 6 total matches (IDs 5-10)
+			name:           "with limit - count greater than items",
+			filter:         "Age > 40",
+			options:        FilterOptions{Limit: 3}, // Only return first 3
+			wantCount:      3,                       // Only 3 items returned due to limit
+			wantTotalCount: 6,                       // But 6 total matches (IDs 5-10)
 		},
 		{
-			name:          "with offset - count greater than items",
-			filter:        "Age > 40",
-			options:       FilterOptions{Offset: 4}, // Skip first 4
-			wantCount:     2,                       // Only 2 items returned after offset
-			wantTotalCount: 6,                      // But 6 total matches (IDs 5-10)
+			name:           "with offset - count greater than items",
+			filter:         "Age > 40",
+			options:        FilterOptions{Offset: 4}, // Skip first 4
+			wantCount:      2,                        // Only 2 items returned after offset
+			wantTotalCount: 6,                        // But 6 total matches (IDs 5-10)
 		},
 		{
-			name:          "with limit and offset - count greater than items",
-			filter:        "Age > 30",
-			options:       FilterOptions{Limit: 3, Offset: 2}, // Skip 2, limit to 3
-			wantCount:     3,                                 // 3 items returned
-			wantTotalCount: 8,                                // But 8 total matches (IDs 3-10)
+			name:           "with limit and offset - count greater than items",
+			filter:         "Age > 30",
+			options:        FilterOptions{Limit: 3, Offset: 2}, // Skip 2, limit to 3
+			wantCount:      3,                                  // 3 items returned
+			wantTotalCount: 8,                                  // But 8 total matches (IDs 3-10)
 		},
 		{
-			name:          "complex filter - count accurate",
-			filter:        "Age > 40 AND Active = true",
-			options:       FilterOptions{Limit: 2},
-			wantCount:     2,                     // Only 2 returned due to limit
-			wantTotalCount: 3,                    // But 3 total matches (IDs 6, 7, 9)
+			name:           "complex filter - count accurate",
+			filter:         "Age > 40 AND Active = true",
+			options:        FilterOptions{Limit: 2},
+			wantCount:      2, // Only 2 returned due to limit
+			wantTotalCount: 3, // But 3 total matches (IDs 6, 7, 9)
 		},
 	}
 
@@ -427,7 +516,79 @@ func TestCountResults(t *testing.T) {
 
 			// Verify the Count is always >= number of items returned
 			if result.Count < len(result.Items) {
-				t.Errorf("ApplyFilter() Count (%d) is less than number of items (%d), which should never happen", 
+				t.Errorf("ApplyFilter() Count (%d) is less than number of items (%d), which should never happen",
+					result.Count, len(result.Items))
+			}
+		})
+	}
+}
+
+type MsgPackStruct struct {
+	ID        string `json:"id" msg:"i"`
+	Path      string `json:"path" msg:"p"`
+	SomeIndex int    `json:"someIndex" msg:"si"`
+}
+
+func TestMsgPack(t *testing.T) {
+	// Test data
+	testData := []MsgPackStruct{
+		{
+			ID:        "123",
+			Path:      "/abc/def",
+			SomeIndex: 5,
+		},
+		{
+			ID:        "456",
+			Path:      "/abc/zzz",
+			SomeIndex: 5,
+		},
+		{
+			ID:        "457",
+			Path:      "/abc/daz",
+			SomeIndex: 6,
+		},
+	}
+	tests := []struct {
+		name           string
+		filter         string
+		options        FilterOptions
+		wantCount      int // Expected number of items returned (after pagination)
+		wantTotalCount int // Expected total number of matches (before pagination)
+	}{
+		{
+			name:           "single record",
+			filter:         "id = 123",
+			options:        FilterOptions{}, // Default options (no limit, no offset)
+			wantCount:      1,               // People with Age > 40: IDs 5-10
+			wantTotalCount: 1,               // Total matches should equal returned items
+		},
+		{
+			name:           "some index equal",
+			filter:         "someIndex = 5",
+			options:        FilterOptions{}, // Default options (no limit, no offset)
+			wantCount:      2,               // People with Age > 40: IDs 5-10
+			wantTotalCount: 2,               // Total matches should equal returned items
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ApplyFilter(tt.filter, testData, tt.options)
+			if err != nil {
+				t.Fatalf("ApplyFilter() unexpected error = %v", err)
+			}
+
+			if len(result.Items) != tt.wantCount {
+				t.Errorf("ApplyFilter() returned %d items, want %d", len(result.Items), tt.wantCount)
+			}
+
+			if result.Count != tt.wantTotalCount {
+				t.Errorf("ApplyFilter() Count = %d, want %d", result.Count, tt.wantTotalCount)
+			}
+
+			// Verify the Count is always >= number of items returned
+			if result.Count < len(result.Items) {
+				t.Errorf("ApplyFilter() Count (%d) is less than number of items (%d), which should never happen",
 					result.Count, len(result.Items))
 			}
 		})
