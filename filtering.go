@@ -17,15 +17,17 @@ package rql
 import (
 	"bufio"
 	"fmt"
-	"github.com/auxten/postgresql-parser/pkg/sql/parser"
-	"github.com/auxten/postgresql-parser/pkg/sql/sem/tree"
-	"github.com/auxten/postgresql-parser/pkg/walk"
 	"log"
 	"net/url"
 	"reflect"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/auxten/postgresql-parser/pkg/sql/parser"
+	"github.com/auxten/postgresql-parser/pkg/sql/sem/tree"
+	"github.com/auxten/postgresql-parser/pkg/walk"
 )
 
 // FilterOptions contains configuration options for filtering and pagination
@@ -82,7 +84,7 @@ func ApplyFilter[T any](rawFilters string, items []T, options ...FilterOptions) 
 	pseudoQuery := fmt.Sprintf("SELECT * FROM t WHERE %s", rawFilters)
 	queryTree, err := parser.Parse(pseudoQuery)
 	if err != nil {
-		log.Println(err)
+		// log.Println(err)
 		return Result[T]{}, err
 	}
 
@@ -90,7 +92,7 @@ func ApplyFilter[T any](rawFilters string, items []T, options ...FilterOptions) 
 	gfv := &GenericFilterVisitor{}
 
 	whereFinder := &walk.AstWalker{
-		Fn: func(ctx interface{}, node interface{}) (stop bool) {
+		Fn: func(ctx any, node any) (stop bool) {
 			if whereNode, ok := node.(*tree.Where); ok {
 				// Process the where clause
 				gfv.processWhereNode(whereNode)
@@ -134,7 +136,7 @@ func ApplyFilter[T any](rawFilters string, items []T, options ...FilterOptions) 
 		}
 	} else if len(anyConditions) > 0 {
 		// Complex query with both regular SQL conditions and ANY conditions
-		log.Println("Combining SQL conditions with ANY conditions")
+		// log.Println("Combining SQL conditions with ANY conditions")
 
 		// Prepare the SQL conditions
 		sqlCondition := gfv.rootCondition
@@ -214,7 +216,7 @@ func (v *GenericFilterVisitor) processWhereNode(whereNode *tree.Where) {
 }
 
 // evaluate evaluates if an item meets the filter conditions
-func (v *GenericFilterVisitor) evaluate(item interface{}) bool {
+func (v *GenericFilterVisitor) evaluate(item any) bool {
 	if v.rootCondition == nil {
 		return true
 	}
@@ -283,7 +285,7 @@ func (v *GenericFilterVisitor) processComparisonExpr(node *tree.ComparisonExpr) 
 
 	// Special handling for true/false literals (used as replacements for ANY operators)
 	if fieldName == "true" || fieldName == "false" {
-		log.Printf("Detected placeholder condition: %s %s %s", fieldName, node.Operator, rightStr)
+		// log.Printf("Detected placeholder condition: %s %s %s", fieldName, node.Operator, rightStr)
 		if fieldName == "true" && (rightStr == "true" || rightStr == "1=1") {
 			return &alwaysTrueCondition{}
 		}
@@ -339,7 +341,7 @@ func (v *GenericFilterVisitor) processComparisonExpr(node *tree.ComparisonExpr) 
 
 // Condition interface for filter conditions
 type Condition interface {
-	evaluate(item interface{}) bool
+	evaluate(item any) bool
 }
 
 // AndCondition represents an AND condition
@@ -348,10 +350,10 @@ type AndCondition struct {
 	right Condition
 }
 
-func (c *AndCondition) evaluate(item interface{}) bool {
+func (c *AndCondition) evaluate(item any) bool {
 	leftResult := c.left.evaluate(item)
 	rightResult := c.right.evaluate(item)
-	log.Printf("AndCondition: left=%v, right=%v, result=%v", leftResult, rightResult, leftResult && rightResult)
+	// log.Printf("AndCondition: left=%v, right=%v, result=%v", leftResult, rightResult, leftResult && rightResult)
 	return leftResult && rightResult
 }
 
@@ -361,7 +363,7 @@ type OrCondition struct {
 	right Condition
 }
 
-func (c *OrCondition) evaluate(item interface{}) bool {
+func (c *OrCondition) evaluate(item any) bool {
 	return c.left.evaluate(item) || c.right.evaluate(item)
 }
 
@@ -371,7 +373,7 @@ type EqualCondition struct {
 	value string
 }
 
-func (c *EqualCondition) evaluate(item interface{}) bool {
+func (c *EqualCondition) evaluate(item any) bool {
 	fieldValue, found := getFieldValue(item, c.field)
 	if !found {
 		return false
@@ -385,7 +387,7 @@ type NotEqualCondition struct {
 	value string
 }
 
-func (c *NotEqualCondition) evaluate(item interface{}) bool {
+func (c *NotEqualCondition) evaluate(item any) bool {
 	fieldValue, found := getFieldValue(item, c.field)
 	if !found {
 		return false
@@ -407,7 +409,7 @@ type ComparisonCondition struct {
 	operator string // ">", "<", ">=", "<="
 }
 
-func (c *ComparisonCondition) evaluate(item interface{}) bool {
+func (c *ComparisonCondition) evaluate(item any) bool {
 	fieldValue, found := getFieldValue(item, c.field)
 	if !found {
 		return false
@@ -449,7 +451,7 @@ func (c *ComparisonCondition) evaluate(item interface{}) bool {
 	}
 }
 
-func (c *LikeCondition) evaluate(item interface{}) bool {
+func (c *LikeCondition) evaluate(item any) bool {
 	fieldValue, found := getFieldValue(item, c.field)
 	if !found {
 		return false
@@ -523,7 +525,7 @@ func (c *LikeCondition) evaluate(item interface{}) bool {
 // alwaysTrueCondition is a condition that always evaluates to true
 type alwaysTrueCondition struct{}
 
-func (c *alwaysTrueCondition) evaluate(item interface{}) bool {
+func (c *alwaysTrueCondition) evaluate(item any) bool {
 	return true
 }
 
@@ -536,7 +538,7 @@ func isAlwaysTrueCondition(cond Condition) bool {
 
 // getFieldValue gets a field value from an item using reflection
 // Supports nested fields with dot notation (e.g., "user.name")
-func getFieldValue(item interface{}, fieldPath string) (string, bool) {
+func getFieldValue(item any, fieldPath string) (string, bool) {
 	value := reflect.ValueOf(item)
 
 	// If item is a pointer, dereference it
@@ -588,7 +590,7 @@ func getFieldValue(item interface{}, fieldPath string) (string, bool) {
 func findFieldCaseInsensitive(value reflect.Value, fieldName string) reflect.Value {
 	fieldNameLower := strings.ToLower(fieldName)
 
-	for i := 0; i < value.NumField(); i++ {
+	for i := range value.NumField() {
 		field := value.Type().Field(i)
 		if strings.ToLower(field.Name) == fieldNameLower {
 			return value.Field(i)
@@ -605,7 +607,7 @@ type AnyArrayContainsCondition struct {
 }
 
 // getArrayFieldValues gets an array/slice field's values as strings
-func getArrayFieldValues(item interface{}, fieldPath string) ([]string, bool) {
+func getArrayFieldValues(item any, fieldPath string) ([]string, bool) {
 	value := reflect.ValueOf(item)
 
 	// If item is a pointer, dereference it
@@ -674,7 +676,7 @@ func getArrayFieldValues(item interface{}, fieldPath string) ([]string, bool) {
 
 	// Convert all elements to strings
 	result := make([]string, arrayField.Len())
-	for i := 0; i < arrayField.Len(); i++ {
+	for i := range arrayField.Len() {
 		elem := arrayField.Index(i)
 		// Handle different element types
 		switch elem.Kind() {
@@ -703,7 +705,7 @@ type AnyArrayNotContainsCondition struct {
 	value string
 }
 
-func (c *AnyArrayNotContainsCondition) evaluate(item interface{}) bool {
+func (c *AnyArrayNotContainsCondition) evaluate(item any) bool {
 	// We need to get an array/slice field and check if no element equals the value
 	values, found := getArrayFieldValues(item, c.field)
 	if !found {
@@ -713,12 +715,7 @@ func (c *AnyArrayNotContainsCondition) evaluate(item interface{}) bool {
 		return true // Empty array doesn't contain anything
 	}
 
-	for _, v := range values {
-		if v == c.value {
-			return false // Found a match, so the NOT condition fails
-		}
-	}
-	return true // No matches found
+	return !slices.Contains(values, c.value) // No matches found
 }
 
 // AnyArrayContainsAnyCondition checks if any element in an array field equals any of the provided values
@@ -727,7 +724,7 @@ type AnyArrayContainsAnyCondition struct {
 	values []string
 }
 
-func (c *AnyArrayContainsAnyCondition) evaluate(item interface{}) bool {
+func (c *AnyArrayContainsAnyCondition) evaluate(item any) bool {
 	// We need to get an array/slice field and check if any element equals any of the values
 	fieldValues, found := getArrayFieldValues(item, c.field)
 	if !found {
@@ -738,10 +735,8 @@ func (c *AnyArrayContainsAnyCondition) evaluate(item interface{}) bool {
 	}
 
 	for _, fieldVal := range fieldValues {
-		for _, condVal := range c.values {
-			if fieldVal == condVal {
-				return true
-			}
+		if slices.Contains(c.values, fieldVal) {
+			return true
 		}
 	}
 	return false
@@ -753,7 +748,7 @@ type AnyArrayNotContainsAnyCondition struct {
 	values []string
 }
 
-func (c *AnyArrayNotContainsAnyCondition) evaluate(item interface{}) bool {
+func (c *AnyArrayNotContainsAnyCondition) evaluate(item any) bool {
 	// We need to get an array/slice field and check if no element equals any of the values
 	fieldValues, found := getArrayFieldValues(item, c.field)
 	if !found {
@@ -764,10 +759,8 @@ func (c *AnyArrayNotContainsAnyCondition) evaluate(item interface{}) bool {
 	}
 
 	for _, fieldVal := range fieldValues {
-		for _, condVal := range c.values {
-			if fieldVal == condVal {
-				return false // Found a match, so the NOT condition fails
-			}
+		if slices.Contains(c.values, fieldVal) {
+			return false // Found a match, so the NOT condition fails
 		}
 	}
 	return true // No matches found
@@ -849,11 +842,11 @@ func preprocessAnyOperator(filter string) (string, []Condition, error) {
 }
 
 // Implementation of the evaluate method for AnyArrayContainsCondition
-func (c *AnyArrayContainsCondition) evaluate(item interface{}) bool {
+func (c *AnyArrayContainsCondition) evaluate(item any) bool {
 	// We need to get an array/slice field and check if any element equals the value
-	log.Printf("AnyArrayContainsCondition: checking if field %s contains value %s", c.field, c.value)
+	// log.Printf("AnyArrayContainsCondition: checking if field %s contains value %s", c.field, c.value)
 	values, found := getArrayFieldValues(item, c.field)
-	log.Printf("Field values found: %v, values: %v", found, values)
+	// log.Printf("Field values found: %v, values: %v", found, values)
 
 	if !found {
 		return false
@@ -924,8 +917,8 @@ func parseAnyValues(valuesStr string) []string {
 
 	if len(values) == 0 {
 		// Fallback method if the scanner didn't work
-		rawValues := strings.Split(valuesStr, ",")
-		for _, v := range rawValues {
+		rawValues := strings.SplitSeq(valuesStr, ",")
+		for v := range rawValues {
 			v = strings.TrimSpace(v)
 			// Remove surrounding quotes if present
 			if strings.HasPrefix(v, "'") && strings.HasSuffix(v, "'") {
